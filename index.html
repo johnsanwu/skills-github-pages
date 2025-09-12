@@ -3,37 +3,691 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的第一個網頁</title>
+    <title>專案管理工具 (類 Smartsheet)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
     <style>
+        /* 自定義樣式 */
         body {
-            font-family: sans-serif;
+            font-family: 'Inter', '微軟正黑體', sans-serif;
+            color: #1a202c;
+        }
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+        }
+        .grid-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 14px;
+        }
+        .grid-table th, .grid-table td {
+            border: 1px solid #e2e8f0;
+            padding: 8px 12px;
+            white-space: nowrap;
+        }
+        .grid-table th {
+            background-color: #f8fafc;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .task-row:hover {
+            background-color: #f7fafc;
+        }
+        .indent-0 { padding-left: 12px; }
+        .indent-1 { padding-left: 36px; }
+        .indent-2 { padding-left: 60px; }
+        .indent-3 { padding-left: 84px; }
+        .indent-4 { padding-left: 108px; }
+
+        /* 甘特圖樣式 */
+        .gantt-chart {
+            position: relative;
+            border-left: 1px solid #e2e8f0;
+        }
+        .gantt-timeline {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+            z-index: 10;
+        }
+        .gantt-bar {
+            position: absolute;
+            height: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #4299e1;
+            border-radius: 4px;
+            border: 1px solid #2b6cb0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: white;
+            font-size: 12px;
+            padding-left: 6px;
+            cursor: pointer;
+        }
+        .gantt-bar-progress {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background-color: #2b6cb0;
+            border-radius: 3px;
+        }
+        .gantt-dependency {
+            position: absolute;
+            stroke: #ef4444;
+            stroke-width: 2;
+            fill: none;
+            pointer-events: none;
+        }
+
+        /* 卡片視圖樣式 */
+        .kanban-board {
             display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #f0f2f5;
-            margin: 0;
+            gap: 16px;
+            overflow-x: auto;
+            padding: 16px;
+            min-height: calc(100vh - 200px);
         }
-        .container {
-            text-align: center;
-            padding: 40px;
+        .kanban-column {
+            flex: 0 0 300px;
+            background-color: #f1f5f9;
+            border-radius: 8px;
+        }
+        .kanban-column-header {
+            padding: 12px;
+            font-weight: bold;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .kanban-cards {
+            padding: 8px;
+            min-height: 100px;
+            height: 100%;
+        }
+        .kanban-card {
             background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: grab;
         }
-        h1 {
-            color: #333;
+        .kanban-card:active {
+            cursor: grabbing;
         }
-        p {
-            color: #666;
-            font-size: 1.2em;
+        
+        /* 載入動畫 */
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>哈囉，世界！</h1>
-        <p>這是我用 GitHub Pages 建立的第一個網站。</p>
+<body class="bg-gray-50">
+
+    <div id="app-container" class="p-4 md:p-6 lg:p-8 max-w-full mx-auto">
+        <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <h1 class="text-2xl font-bold text-gray-800">專案管理工具</h1>
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm text-gray-500">視圖:</span>
+                    <div class="flex items-center bg-gray-100 rounded-lg p-1">
+                        <button id="view-grid" class="view-btn active-view-btn px-3 py-1 text-sm rounded-md"><i class="fas fa-grip"></i> 網格</button>
+                        <button id="view-gantt" class="view-btn inactive-view-btn px-3 py-1 text-sm rounded-md"><i class="fas fa-chart-bar"></i> 甘特圖</button>
+                        <button id="view-kanban" class="view-btn inactive-view-btn px-3 py-1 text-sm rounded-md"><i class="fas fa-th-large"></i> 卡片</button>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+                <button id="add-row-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-plus"></i> 新增任務
+                </button>
+                 <button id="indent-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-indent"></i> 縮排
+                </button>
+                <button id="outdent-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-outdent"></i> 凸排
+                </button>
+                 <button id="delete-row-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-trash"></i> 刪除選取
+                </button>
+            </div>
+             <div class="mt-4 text-sm text-gray-600">
+                <p>您的使用者 ID (分享給夥伴以進行協作): <code id="user-id" class="bg-gray-100 p-1 rounded"></code></p>
+            </div>
+        </div>
+
+        <div id="loader-container" class="flex justify-center items-center h-64">
+             <div class="loader"></div>
+        </div>
+        
+        <div id="content-container" class="hidden">
+            <!-- 網格與甘特圖容器 -->
+            <div id="grid-gantt-view" class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="table-container">
+                    <div id="grid-gantt-container" class="flex">
+                        <!-- 網格部分 -->
+                        <div id="grid-view" class="flex-shrink-0"></div>
+                        <!-- 甘特圖部分 -->
+                        <div id="gantt-view" class="flex-grow"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- 卡片視圖容器 -->
+            <div id="kanban-view" class="hidden"></div>
+        </div>
     </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- 全域變數與設定 ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-smartsheet-clone';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth, userId;
+        let tasks = [];
+        let columns = [
+            { id: 'name', title: '任務名稱', type: 'text', width: 250 },
+            { id: 'assignee', title: '負責人', type: 'text', width: 120 },
+            { id: 'status', title: '狀態', type: 'select', options: ['未開始', '進行中', '已完成', '延遲'], width: 120 },
+            { id: 'startDate', title: '開始日期', type: 'date', width: 150 },
+            { id: 'endDate', title: '結束日期', type: 'date', width: 150 },
+            { id: 'progress', title: '進度 (%)', type: 'number', width: 100 },
+            { id: 'dependencies', title: '前置任務ID', type: 'text', width: 120 },
+        ];
+        
+        let currentView = 'grid'; // 'grid', 'gantt', 'kanban'
+        let selectedRowId = null;
+        let dayWidth = 40; // 甘特圖每天的寬度 (px)
+
+        // --- UI 元素 ---
+        const loader = document.getElementById('loader-container');
+        const contentContainer = document.getElementById('content-container');
+        const gridViewEl = document.getElementById('grid-view');
+        const ganttViewEl = document.getElementById('gantt-view');
+        const kanbanViewEl = document.getElementById('kanban-view');
+        const gridGanttViewEl = document.getElementById('grid-gantt-view');
+        
+        // --- 初始化函式 ---
+        async function initialize() {
+            if (!firebaseConfig) {
+                console.error("Firebase config is not available.");
+                loader.innerHTML = '<p class="text-red-500">Firebase 設定遺失，無法載入應用程式。</p>';
+                return;
+            }
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setLogLevel('debug');
+            
+            setupEventListeners();
+            authenticateUser();
+        }
+
+        function authenticateUser() {
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-id').textContent = userId;
+                    console.log("User authenticated with UID:", userId);
+                    loadProjectData();
+                } else if (initialAuthToken) {
+                    try {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } catch (error) {
+                        console.error("Error signing in with custom token:", error);
+                        await signInAnonymously(auth);
+                    }
+                } else {
+                    await signInAnonymously(auth);
+                }
+            });
+        }
+        
+        // --- 資料處理函式 ---
+        function getProjectDocRef() {
+            return doc(db, 'artifacts', appId, 'public/data');
+        }
+
+        function loadProjectData() {
+            const docRef = getProjectDocRef();
+            onSnapshot(docRef, (docSnap) => {
+                loader.style.display = 'none';
+                contentContainer.style.display = 'block';
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    tasks = data.tasks || getDefaultTasks();
+                } else {
+                    console.log("No document found. Creating with default data.");
+                    tasks = getDefaultTasks();
+                    saveProjectData(); // 保存初始資料
+                }
+                render();
+            }, (error) => {
+                console.error("Error fetching document:", error);
+                loader.innerHTML = `<p class="text-red-500">讀取資料時發生錯誤: ${error.message}</p>`;
+            });
+        }
+
+        async function saveProjectData() {
+            if (!userId) {
+                console.error("User not authenticated, cannot save data.");
+                return;
+            }
+            try {
+                await setDoc(getProjectDocRef(), { tasks: tasks });
+                console.log("Project data saved.");
+            } catch (error) {
+                console.error("Error saving project data: ", error);
+            }
+        }
+        
+        function getDefaultTasks() {
+            return [
+                { id: 1, parentId: null, name: '專案啟動', assignee: 'Alice', status: '已完成', startDate: '2025-09-01', endDate: '2025-09-05', progress: 100, dependencies: '' },
+                { id: 2, parentId: 1, name: '定義專案範疇', assignee: 'Alice', status: '已完成', startDate: '2025-09-01', endDate: '2025-09-03', progress: 100, dependencies: '' },
+                { id: 3, parentId: 1, name: '組建團隊', assignee: 'Bob', status: '已完成', startDate: '2025-09-04', endDate: '2025-09-05', progress: 100, dependencies: '2' },
+                { id: 4, parentId: null, name: '規劃階段', assignee: 'Charlie', status: '進行中', startDate: '2025-09-06', endDate: '2025-09-15', progress: 50, dependencies: '' },
+                { id: 5, parentId: 4, name: '開發使用者故事', assignee: 'David', status: '進行中', startDate: '2025-09-06', endDate: '2025-09-10', progress: 75, dependencies: '3' },
+                { id: 6, parentId: 4, name: '設計 UI/UX', assignee: 'Eve', status: '未開始', startDate: '2025-09-11', endDate: '2025-09-15', progress: 0, dependencies: '5' },
+                { id: 7, parentId: null, name: '執行階段', assignee: 'Frank', status: '未開始', startDate: '2025-09-16', endDate: '2025-10-10', progress: 0, dependencies: '4' }
+            ];
+        }
+
+        // --- 渲染函式 ---
+        function render() {
+            if (currentView === 'kanban') {
+                gridGanttViewEl.classList.add('hidden');
+                kanbanViewEl.classList.remove('hidden');
+                renderKanbanView();
+            } else {
+                gridGanttViewEl.classList.remove('hidden');
+                kanbanViewEl.classList.add('hidden');
+                renderGridView();
+                renderGanttView();
+            }
+        }
+
+        function getTaskTree() {
+            const taskMap = new Map(tasks.map(t => [t.id, { ...t, children: [] }]));
+            const tree = [];
+            for (const task of taskMap.values()) {
+                if (task.parentId && taskMap.has(task.parentId)) {
+                    taskMap.get(task.parentId).children.push(task);
+                } else {
+                    tree.push(task);
+                }
+            }
+            return tree;
+        }
+
+        function flattenTree(tree, level = 0, result = []) {
+            for (const node of tree) {
+                result.push({ ...node, level });
+                if (node.children.length > 0) {
+                    flattenTree(node.children, level + 1, result);
+                }
+            }
+            return result;
+        }
+
+        // --- 網格視圖渲染 ---
+        function renderGridView() {
+            const flatTasks = flattenTree(getTaskTree());
+            let html = `<table class="grid-table"><thead><tr>`;
+            columns.forEach(col => {
+                html += `<th style="min-width: ${col.width}px">${col.title}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            flatTasks.forEach(task => {
+                const isSelected = task.id === selectedRowId;
+                html += `<tr class="task-row ${isSelected ? 'bg-blue-100' : ''}" data-id="${task.id}">`;
+                columns.forEach(col => {
+                    html += `<td class="indent-${task.level}" data-col="${col.id}" contenteditable="${col.type !== 'select'}" style="min-width: ${col.width}px">`;
+                    if (col.type === 'select') {
+                        html += `<select class="w-full bg-transparent border-none focus:ring-0" data-task-id="${task.id}" data-col-id="${col.id}">`;
+                        col.options.forEach(option => {
+                            html += `<option value="${option}" ${task[col.id] === option ? 'selected' : ''}>${option}</option>`;
+                        });
+                        html += `</select>`;
+                    } else {
+                        html += `${task[col.id] || ''}`;
+                    }
+                    html += `</td>`;
+                });
+                html += `</tr>`;
+            });
+
+            html += `</tbody></table>`;
+            gridViewEl.innerHTML = html;
+        }
+
+        // --- 甘特圖視圖渲染 ---
+        function renderGanttView() {
+            if (currentView !== 'gantt') {
+                ganttViewEl.style.display = 'none';
+                return;
+            }
+            ganttViewEl.style.display = 'block';
+
+            const flatTasks = flattenTree(getTaskTree());
+            const { minDate, maxDate } = getProjectDateRange();
+            if (!minDate || !maxDate) {
+                ganttViewEl.innerHTML = '';
+                return;
+            }
+
+            const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24) + 1;
+            const ganttWidth = totalDays * dayWidth;
+
+            let headerHtml = '<div class="gantt-timeline flex sticky top-0 bg-gray-50 z-10">';
+            let currentDate = new Date(minDate);
+            while (currentDate <= maxDate) {
+                headerHtml += `<div class="text-xs text-center border-r border-gray-200" style="width:${dayWidth}px">${currentDate.getMonth() + 1}/${currentDate.getDate()}</div>`;
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            headerHtml += '</div>';
+
+            let bodyHtml = `<div class="gantt-chart" style="width:${ganttWidth}px; height:${flatTasks.length * 41}px">`;
+            const rowPositions = new Map();
+
+            flatTasks.forEach((task, index) => {
+                const taskStart = new Date(task.startDate);
+                const taskEnd = new Date(task.endDate);
+                if (isNaN(taskStart) || isNaN(taskEnd)) return;
+                
+                const left = ((taskStart - minDate) / (1000 * 60 * 60 * 24)) * dayWidth;
+                const width = ((taskEnd - taskStart) / (1000 * 60 * 60 * 24) + 1) * dayWidth;
+                const top = index * 41 + 1;
+
+                rowPositions.set(task.id, { top: top + 20, left: left, width: width });
+                
+                bodyHtml += `
+                    <div class="gantt-bar" style="left:${left}px; width:${width}px; top:${top}px;">
+                        <div class="gantt-bar-progress" style="width:${task.progress || 0}%"></div>
+                        <span class="absolute left-2 top-1/2 -translate-y-1/2">${task.name}</span>
+                    </div>`;
+            });
+            
+             // 繪製依賴線
+            let svgLines = `<svg width="${ganttWidth}" height="${flatTasks.length * 41}" class="gantt-dependency" style="position:absolute; top:0; left:0;">`;
+            flatTasks.forEach(task => {
+                if (task.dependencies) {
+                    const deps = task.dependencies.split(',').map(d => parseInt(d.trim()));
+                    deps.forEach(depId => {
+                        if (rowPositions.has(depId) && rowPositions.has(task.id)) {
+                            const startPos = rowPositions.get(depId);
+                            const endPos = rowPositions.get(task.id);
+                            const startX = startPos.left + startPos.width;
+                            const startY = startPos.top;
+                            const endX = endPos.left;
+                            const endY = endPos.top;
+                            svgLines += `<path d="M ${startX} ${startY} C ${startX + 20} ${startY}, ${endX - 20} ${endY}, ${endX} ${endY}" />`;
+                        }
+                    });
+                }
+            });
+            svgLines += `</svg>`;
+
+
+            bodyHtml += svgLines + `</div>`;
+            ganttViewEl.innerHTML = headerHtml + bodyHtml;
+        }
+
+        // --- 卡片視圖渲染 ---
+        function renderKanbanView() {
+            const statuses = columns.find(c => c.id === 'status').options;
+            const tasksByStatus = {};
+            statuses.forEach(s => tasksByStatus[s] = []);
+            tasks.forEach(t => {
+                if(tasksByStatus[t.status]) {
+                    tasksByStatus[t.status].push(t);
+                }
+            });
+
+            let html = `<div class="kanban-board">`;
+            statuses.forEach(status => {
+                html += `
+                    <div class="kanban-column" data-status="${status}">
+                        <div class="kanban-column-header">${status} (${tasksByStatus[status].length})</div>
+                        <div class="kanban-cards">`;
+                tasksByStatus[status].forEach(task => {
+                    html += `
+                        <div class="kanban-card" draggable="true" data-id="${task.id}">
+                            <p class="font-semibold">${task.name}</p>
+                            <p class="text-sm text-gray-500 mt-2">負責人: ${task.assignee || '未指派'}</p>
+                            <p class="text-sm text-gray-500">日期: ${task.startDate || '?'} - ${task.endDate || '?'}</p>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+            kanbanViewEl.innerHTML = html;
+        }
+
+
+        // --- 事件處理函式 ---
+        function setupEventListeners() {
+            // 視圖切換
+            document.getElementById('view-grid').addEventListener('click', () => switchView('grid'));
+            document.getElementById('view-gantt').addEventListener('click', () => switchView('gantt'));
+            document.getElementById('view-kanban').addEventListener('click', () => switchView('kanban'));
+
+            // 表格操作
+            document.getElementById('add-row-btn').addEventListener('click', addRow);
+            document.getElementById('delete-row-btn').addEventListener('click', deleteSelectedRow);
+            document.getElementById('indent-btn').addEventListener('click', indentSelectedRow);
+            document.getElementById('outdent-btn').addEventListener('click', outdentSelectedRow);
+
+            // 網格編輯
+            gridViewEl.addEventListener('focusout', handleCellEdit);
+            gridViewEl.addEventListener('change', handleSelectChange);
+            gridViewEl.addEventListener('click', handleRowSelect);
+
+            // 卡片拖放
+            kanbanViewEl.addEventListener('dragstart', handleDragStart);
+            kanbanViewEl.addEventListener('dragover', handleDragOver);
+            kanbanViewEl.addEventListener('drop', handleDrop);
+        }
+        
+        function switchView(view) {
+            currentView = view;
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active-view-btn', 'inactive-view-btn');
+                if (btn.id === `view-${view}`) {
+                    btn.classList.add('active-view-btn');
+                } else {
+                    btn.classList.add('inactive-view-btn');
+                }
+            });
+            render();
+        }
+
+        function handleRowSelect(e) {
+            const row = e.target.closest('.task-row');
+            if (row) {
+                selectedRowId = parseInt(row.dataset.id);
+                render(); // 重繪以顯示選取狀態
+            }
+        }
+        
+        function handleCellEdit(e) {
+            const cell = e.target;
+            if (cell.tagName === 'TD') {
+                const rowId = parseInt(cell.parentElement.dataset.id);
+                const colId = cell.dataset.col;
+                const task = tasks.find(t => t.id === rowId);
+                if (task) {
+                    const newValue = cell.innerText;
+                    if (task[colId] !== newValue) {
+                        task[colId] = newValue;
+                        saveProjectData();
+                    }
+                }
+            }
+        }
+        
+        function handleSelectChange(e) {
+            if (e.target.tagName === 'SELECT') {
+                const rowId = parseInt(e.target.dataset.taskId);
+                const colId = e.target.dataset.colId;
+                const task = tasks.find(t => t.id === rowId);
+                if (task) {
+                    task[colId] = e.target.value;
+                    saveProjectData();
+                }
+            }
+        }
+
+        function addRow() {
+            const newId = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
+            const newRow = {
+                id: newId,
+                parentId: null,
+                name: '新任務',
+                assignee: '',
+                status: '未開始',
+                startDate: new Date().toISOString().split('T')[0],
+                endDate: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0],
+                progress: 0,
+                dependencies: ''
+            };
+            tasks.push(newRow);
+            selectedRowId = newId;
+            saveProjectData();
+        }
+
+        function deleteSelectedRow() {
+            if (selectedRowId === null) {
+                alert('請先選擇要刪除的任務。');
+                return;
+            }
+            
+            const taskIdsToDelete = new Set();
+            taskIdsToDelete.add(selectedRowId);
+
+            // 遞迴刪除所有子任務
+            function findChildren(parentId) {
+                tasks.forEach(task => {
+                    if (task.parentId === parentId) {
+                        taskIdsToDelete.add(task.id);
+                        findChildren(task.id);
+                    }
+                });
+            }
+            findChildren(selectedRowId);
+
+            tasks = tasks.filter(t => !taskIdsToDelete.has(t.id));
+            selectedRowId = null;
+            saveProjectData();
+        }
+        
+        function indentSelectedRow() {
+            if (selectedRowId === null) return;
+            const flatTasks = flattenTree(getTaskTree());
+            const taskIndex = flatTasks.findIndex(t => t.id === selectedRowId);
+
+            if (taskIndex > 0) {
+                const currentTask = tasks.find(t => t.id === selectedRowId);
+                const previousTask = flatTasks[taskIndex - 1];
+                // 只能成為同級或更深層級的任務的子任務
+                if (previousTask.level >= (currentTask.level || 0)) {
+                    currentTask.parentId = previousTask.id;
+                    saveProjectData();
+                }
+            }
+        }
+        
+        function outdentSelectedRow() {
+            if (selectedRowId === null) return;
+            const task = tasks.find(t => t.id === selectedRowId);
+            if (task && task.parentId) {
+                const parentTask = tasks.find(t => t.id === task.parentId);
+                if (parentTask) {
+                    task.parentId = parentTask.parentId;
+                    saveProjectData();
+                }
+            }
+        }
+        
+        // 卡片拖放處理
+        let draggedItemId = null;
+        function handleDragStart(e) {
+            draggedItemId = parseInt(e.target.dataset.id);
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const column = e.target.closest('.kanban-column');
+            if (column && draggedItemId) {
+                const newStatus = column.dataset.status;
+                const task = tasks.find(t => t.id === draggedItemId);
+                if (task && task.status !== newStatus) {
+                    task.status = newStatus;
+                    saveProjectData();
+                }
+            }
+            draggedItemId = null;
+        }
+
+        // --- 輔助函式 ---
+        function getProjectDateRange() {
+            if (tasks.length === 0) return { minDate: null, maxDate: null };
+            
+            const dates = tasks.flatMap(t => [new Date(t.startDate), new Date(t.endDate)])
+                               .filter(d => !isNaN(d));
+            
+            if (dates.length === 0) return { minDate: null, maxDate: null };
+
+            const minDate = new Date(Math.min(...dates));
+            const maxDate = new Date(Math.max(...dates));
+
+            return { minDate, maxDate };
+        }
+        
+        // --- 程式進入點 ---
+        initialize();
+
+    </script>
+
+    <!-- 自定義按鈕樣式 -->
+    <style>
+        .active-view-btn {
+            background-color: #ffffff;
+            color: #3b82f6;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .inactive-view-btn {
+            background-color: transparent;
+            color: #4b5563;
+        }
+        .inactive-view-btn:hover {
+            background-color: #e5e7eb;
+        }
+    </style>
 </body>
 </html>
