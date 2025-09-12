@@ -163,9 +163,6 @@
                     <i class="fas fa-trash"></i> 刪除選取
                 </button>
             </div>
-             <div class="mt-4 text-sm text-gray-600">
-                <p>您的使用者 ID (分享給夥伴以進行協作): <code id="user-id" class="bg-gray-100 p-1 rounded"></code></p>
-            </div>
         </div>
 
         <div id="loader-container" class="flex justify-center items-center h-64">
@@ -189,20 +186,10 @@
         </div>
     </div>
 
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
+    <script>
         // --- 全域變數與設定 ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-smartsheet-clone';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        let app, db, auth, userId;
         let tasks = [];
-        let columns = [
+        const columns = [
             { id: 'name', title: '任務名稱', type: 'text', width: 250 },
             { id: 'assignee', title: '負責人', type: 'text', width: 120 },
             { id: 'status', title: '狀態', type: 'select', options: ['未開始', '進行中', '已完成', '延遲'], width: 120 },
@@ -225,78 +212,28 @@
         const gridGanttViewEl = document.getElementById('grid-gantt-view');
         
         // --- 初始化函式 ---
-        async function initialize() {
-            if (!firebaseConfig) {
-                console.error("Firebase config is not available.");
-                loader.innerHTML = '<p class="text-red-500">Firebase 設定遺失，無法載入應用程式。</p>';
-                return;
-            }
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            setLogLevel('debug');
-            
+        function initialize() {
+            loader.style.display = 'none';
+            contentContainer.style.display = 'block';
             setupEventListeners();
-            authenticateUser();
+            loadLocalData();
         }
 
-        function authenticateUser() {
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    document.getElementById('user-id').textContent = userId;
-                    console.log("User authenticated with UID:", userId);
-                    loadProjectData();
-                } else if (initialAuthToken) {
-                    try {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } catch (error) {
-                        console.error("Error signing in with custom token:", error);
-                        await signInAnonymously(auth);
-                    }
-                } else {
-                    await signInAnonymously(auth);
-                }
-            });
-        }
-        
         // --- 資料處理函式 ---
-        function getProjectDocRef() {
-            return doc(db, 'artifacts', appId, 'public/data');
+        function loadLocalData() {
+            const savedTasks = localStorage.getItem('smartsheetCloneData');
+            if (savedTasks) {
+                tasks = JSON.parse(savedTasks);
+            } else {
+                tasks = getDefaultTasks();
+            }
+            render();
         }
 
-        function loadProjectData() {
-            const docRef = getProjectDocRef();
-            onSnapshot(docRef, (docSnap) => {
-                loader.style.display = 'none';
-                contentContainer.style.display = 'block';
-
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    tasks = data.tasks || getDefaultTasks();
-                } else {
-                    console.log("No document found. Creating with default data.");
-                    tasks = getDefaultTasks();
-                    saveProjectData(); // 保存初始資料
-                }
-                render();
-            }, (error) => {
-                console.error("Error fetching document:", error);
-                loader.innerHTML = `<p class="text-red-500">讀取資料時發生錯誤: ${error.message}</p>`;
-            });
-        }
-
-        async function saveProjectData() {
-            if (!userId) {
-                console.error("User not authenticated, cannot save data.");
-                return;
-            }
-            try {
-                await setDoc(getProjectDocRef(), { tasks: tasks });
-                console.log("Project data saved.");
-            } catch (error) {
-                console.error("Error saving project data: ", error);
-            }
+        function saveAndRender() {
+            localStorage.setItem('smartsheetCloneData', JSON.stringify(tasks));
+            console.log("Project data saved to localStorage.");
+            render();
         }
         
         function getDefaultTasks() {
@@ -540,7 +477,7 @@
                     const newValue = cell.innerText;
                     if (task[colId] !== newValue) {
                         task[colId] = newValue;
-                        saveProjectData();
+                        saveAndRender();
                     }
                 }
             }
@@ -553,7 +490,7 @@
                 const task = tasks.find(t => t.id === rowId);
                 if (task) {
                     task[colId] = e.target.value;
-                    saveProjectData();
+                    saveAndRender();
                 }
             }
         }
@@ -573,12 +510,13 @@
             };
             tasks.push(newRow);
             selectedRowId = newId;
-            saveProjectData();
+            saveAndRender();
         }
 
         function deleteSelectedRow() {
             if (selectedRowId === null) {
-                alert('請先選擇要刪除的任務。');
+                // Use a custom modal or a less intrusive notification instead of alert
+                console.warn('請先選擇要刪除的任務。');
                 return;
             }
             
@@ -598,7 +536,7 @@
 
             tasks = tasks.filter(t => !taskIdsToDelete.has(t.id));
             selectedRowId = null;
-            saveProjectData();
+            saveAndRender();
         }
         
         function indentSelectedRow() {
@@ -612,7 +550,7 @@
                 // 只能成為同級或更深層級的任務的子任務
                 if (previousTask.level >= (currentTask.level || 0)) {
                     currentTask.parentId = previousTask.id;
-                    saveProjectData();
+                    saveAndRender();
                 }
             }
         }
@@ -624,7 +562,7 @@
                 const parentTask = tasks.find(t => t.id === task.parentId);
                 if (parentTask) {
                     task.parentId = parentTask.parentId;
-                    saveProjectData();
+                    saveAndRender();
                 }
             }
         }
@@ -647,7 +585,7 @@
                 const task = tasks.find(t => t.id === draggedItemId);
                 if (task && task.status !== newStatus) {
                     task.status = newStatus;
-                    saveProjectData();
+                    saveAndRender();
                 }
             }
             draggedItemId = null;
@@ -669,7 +607,7 @@
         }
         
         // --- 程式進入點 ---
-        initialize();
+        document.addEventListener('DOMContentLoaded', initialize);
 
     </script>
 
@@ -691,3 +629,4 @@
     </style>
 </body>
 </html>
+
