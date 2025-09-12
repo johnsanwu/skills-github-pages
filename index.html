@@ -162,6 +162,9 @@
                  <button id="delete-row-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2">
                     <i class="fas fa-trash"></i> 刪除選取
                 </button>
+                <button id="export-excel-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2">
+                    <i class="fas fa-file-excel"></i> 匯出 Excel
+                </button>
             </div>
         </div>
 
@@ -185,6 +188,9 @@
             <div id="kanban-view" class="hidden"></div>
         </div>
     </div>
+
+    <!-- SheetJS Library for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <script>
         // --- 全域變數與設定 ---
@@ -434,6 +440,7 @@
             document.getElementById('delete-row-btn').addEventListener('click', deleteSelectedRow);
             document.getElementById('indent-btn').addEventListener('click', indentSelectedRow);
             document.getElementById('outdent-btn').addEventListener('click', outdentSelectedRow);
+            document.getElementById('export-excel-btn').addEventListener('click', exportToExcel);
 
             // 網格編輯
             gridViewEl.addEventListener('focusout', handleCellEdit);
@@ -589,6 +596,35 @@
                 }
             }
             draggedItemId = null;
+        }
+
+        function exportToExcel() {
+            const flatTasks = flattenTree(getTaskTree());
+            
+            const exportData = flatTasks.map(task => {
+                const indentedName = ' '.repeat(task.level * 4) + task.name;
+                return {
+                    '任務ID': task.id,
+                    '任務名稱': indentedName,
+                    '負責人': task.assignee,
+                    '狀態': task.status,
+                    '開始日期': task.startDate,
+                    '結束日期': task.endDate,
+                    '進度 (%)': task.progress,
+                    '前置任務ID': task.dependencies,
+                    '父任務ID': task.parentId || ''
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            ws['!cols'] = [
+                { wch: 8 }, { wch: 40 }, { wch: 15 }, { wch: 12 },
+                { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '專案任務');
+            XLSX.writeFile(wb, '專案計畫.xlsx');
         }
 
         // --- 輔助函式 ---
